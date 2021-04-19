@@ -14,6 +14,12 @@
         :ImageName="food.ImageName"
       />
     </div>
+    <div class="checkout" @click="getDeviceInfo()">Connect to Bluetooth</div>
+    <div class="checkout" @click="connectGATT('RX')">Connect Write</div>
+    <div class="checkout" @click="write()">Write</div>
+    <div class="checkout" @click="connectGATT('TX')">Connect Read</div>
+    <div class="checkout" @click="start()">Read</div>
+    <div class="checkout" @click="stop()">Read</div>
     <payNow :total="this.totalPrice" />
   </div>
 </template>
@@ -51,6 +57,12 @@ export default {
           price: 3.95,
         },
       ],
+      deviceName: "ShopEZ",
+      bleService: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E".toLowerCase(),
+      bleCharacteristicRX: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E".toLowerCase(),
+      bleCharacteristicTX: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E".toLowerCase(),
+      bluetoothDeviceDetected: null,
+      gattCharacteristic: null,
     };
   },
   methods: {
@@ -58,9 +70,103 @@ export default {
       console.log(index);
       this.foods[index].quanity--;
     },
-    addItem: function () {
+    addItem: function (foodId) {
       var name;
       this.foods[name].quanity++;
+    },
+    getDeviceInfo: function () {
+      let options = {
+        optionalServices: [this.bleService],
+        filters: [{ name: this.deviceName }],
+      };
+
+      console.log("Requesting any Bluetooth Device...");
+      return navigator.bluetooth
+        .requestDevice(options)
+        .then((device) => {
+          this.bluetoothDeviceDetected = device;
+        })
+        .catch((error) => {
+          console.log("Argh! " + error);
+        });
+    },
+    write: function () {
+      return (
+        Promise.resolve()
+          // .then(this.connectGATT())
+          .then(() => {
+            console.log("Reading UV Index...");
+            var arr = new Uint8Array([65, 65, 3, 5]);
+            return this.gattCharacteristic.writeValueWithoutResponse(arr);
+          })
+          .catch((error) => {
+            console.log("Waiting to start reading: " + error);
+          })
+      );
+    },
+
+    connectGATT: function (charType) {
+      if (
+        this.bluetoothDeviceDetected.gatt.connected &&
+        this.gattCharacteristic
+      ) {
+        return Promise.resolve();
+      }
+      return this.bluetoothDeviceDetected.gatt
+        .connect()
+        .then((server) => {
+          console.log("Getting GATT Service...");
+          return server.getPrimaryService(this.bleService);
+        })
+        .then((service) => {
+          console.log("Getting GATT Characteristic...");
+          if (charType == "TX") {
+            return service.getCharacteristic(this.bleCharacteristicTX);
+          } else {
+            return service.getCharacteristic(this.bleCharacteristicTX);
+          }
+        })
+        .then((characteristic) => {
+          if (charType == "TX") {
+          this.gattCharacteristicTX = characteristic;
+          this.gattCharacteristicTX.addEventListener(
+            "characteristicvaluechanged",
+            this.handleChangedValue
+          );
+          }
+          else{
+              this.gattCharacteristicRX = characteristic;
+          }
+        });
+    },
+    handleChangedValue: function (event) {
+      let value = String.fromCharCode.apply(
+        null,
+        new Uint8Array(event.target.value.buffer)
+      );
+      // let value = event.target.value.Uint8Array(0);
+      console.log(value);
+    },
+    start: function () {
+      this.gattCharacteristicTX
+        .startNotifications()
+        .then(() => {
+          console.log("Start reading...");
+        })
+        .catch((error) => {
+          console.log("[ERROR] Start: " + error);
+        });
+    },
+
+    stop: function () {
+      this.gattCharacteristicTX
+        .stopNotifications()
+        .then(() => {
+          console.log("Stop reading...");
+        })
+        .catch((error) => {
+          console.log("[ERROR] Stop: " + error);
+        });
     },
   },
   computed: {
